@@ -1,14 +1,10 @@
 from fastapi.testclient import TestClient
 
-from app.detection import failed_attempts
 from app.main import app
 
 
 client = TestClient(app)
 
-
-def setup_function():
-    failed_attempts.clear()
 
 def test_health_check():
     response = client.get("/health")
@@ -62,7 +58,7 @@ def test_alert_is_generated_after_five_failures():
         "source": "web-server-01",
         "event_type": "authentication_failure",
         "username": "admin",
-        "source_ip": "203.0.113.62",
+        "source_ip": "198.51.100.62",
         "endpoint": "/login",
         "status_code": 401,
     }
@@ -84,7 +80,7 @@ def test_alerts_endpoint():
     event = {
         "source": "web-server-01",
         "event_type": "authentication_failure",
-        "source_ip": "203.0.113.63",
+        "source_ip": "198.51.100.63",
         "status_code": 401,
     }
 
@@ -102,7 +98,7 @@ def test_alerts_endpoint():
     matching_alerts = [
         alert
         for alert in data["alerts"]
-        if alert["source_ip"] == "203.0.113.63"
+        if alert["source_ip"] == "198.51.100.63"
     ]
 
     assert len(matching_alerts) >= 1
@@ -151,16 +147,26 @@ def test_get_alert_by_id():
         "status_code": 401,
     }
 
-    for _ in range(5):
-        client.post("/events", json=event)
+    alert = None
 
-    response = client.get("/alerts/1")
+    for _ in range(5):
+        response = client.post("/events", json=event)
+
+        assert response.status_code == 200
+
+        alert = response.json()["alert"]
+
+    assert alert is not None
+
+    alert_id = alert["id"]
+
+    response = client.get(f"/alerts/{alert_id}")
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["id"] == 1
+    assert data["id"] == alert_id
     assert data["alert_type"] == "repeated_authentication_failures"
     assert data["severity"] == "high"
 

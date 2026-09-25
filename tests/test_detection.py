@@ -1,66 +1,60 @@
-from app.detection import analyze_event, failed_attempts
-from app.models import SecurityEvent
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+client = TestClient(app)
 
 
 def test_authentication_failure_alert():
-    failed_attempts.clear()
+    event = {
+        "source": "web-server-01",
+        "event_type": "authentication_failure",
+        "username": "admin",
+        "source_ip": "198.51.100.150",
+    }
 
     for _ in range(4):
-        event = SecurityEvent(
-            source="web-server-01",
-            event_type="authentication_failure",
-            username="admin",
-            source_ip="203.0.113.50",
-        )
+        response = client.post("/events", json=event)
 
-        alert = analyze_event(event)
+        assert response.status_code == 200
+        assert response.json()["alert"] is None
 
-        assert alert is None
+    response = client.post("/events", json=event)
 
-    event = SecurityEvent(
-        source="web-server-01",
-        event_type="authentication_failure",
-        username="admin",
-        source_ip="203.0.113.50",
-    )
+    assert response.status_code == 200
 
-    alert = analyze_event(event)
+    data = response.json()
 
-    assert alert is not None
-    assert alert["alert_type"] == "repeated_authentication_failures"
-    assert alert["severity"] == "high"
-    assert alert["attempt_count"] == 5
+    assert data["alert"] is not None
+    assert data["alert"]["alert_type"] == "repeated_authentication_failures"
+    assert data["alert"]["severity"] == "high"
+    assert data["alert"]["attempt_count"] == 5
 
 
 def test_http_error_spike_alert():
-    failed_attempts.clear()
-
-    from app.detection import http_errors
-
-    http_errors.clear()
+    event = {
+        "source": "web-server-01",
+        "event_type": "http_request",
+        "source_ip": "198.51.100.170",
+        "status_code": 401,
+    }
 
     for _ in range(4):
-        event = SecurityEvent(
-            source="web-server-01",
-            event_type="http_request",
-            source_ip="203.0.113.70",
-            status_code=401,
-        )
+        response = client.post("/events", json=event)
 
-        alert = analyze_event(event)
+        assert response.status_code == 200
+        assert response.json()["alert"] is None
 
-        assert alert is None
+    event["status_code"] = 403
 
-    event = SecurityEvent(
-        source="web-server-01",
-        event_type="http_request",
-        source_ip="203.0.113.70",
-        status_code=403,
-    )
+    response = client.post("/events", json=event)
 
-    alert = analyze_event(event)
+    assert response.status_code == 200
 
-    assert alert is not None
-    assert alert["alert_type"] == "http_error_spike"
-    assert alert["severity"] == "medium"
-    assert alert["error_count"] == 5
+    data = response.json()
+
+    assert data["alert"] is not None
+    assert data["alert"]["alert_type"] == "http_error_spike"
+    assert data["alert"]["severity"] == "medium"
+    assert data["alert"]["attempt_count"] == 5

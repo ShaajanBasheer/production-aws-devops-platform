@@ -213,3 +213,61 @@ def add_event_to_database(event: SecurityEvent) -> SecurityEvent:
         connection.close()
 
     return event
+
+
+def count_recent_authentication_failures(
+    source_ip: str,
+    window_minutes: int,
+) -> int:
+    from .database import get_database_connection
+
+    connection = get_database_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM security_events
+                WHERE source_ip = %s
+                  AND event_type = 'authentication_failure'
+                  AND timestamp >= NOW() - (%s * INTERVAL '1 minute')
+                """,
+                (source_ip, window_minutes),
+            )
+
+            row = cursor.fetchone()
+
+        return row[0]
+
+    finally:
+        connection.close()
+
+
+def count_recent_http_errors(
+    source_ip: str,
+    window_minutes: int,
+) -> int:
+    from .database import get_database_connection
+
+    connection = get_database_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM security_events
+                WHERE source_ip = %s
+                  AND status_code IN (401, 403, 500)
+                  AND timestamp >= NOW() - (%s * INTERVAL '1 minute')
+                """,
+                (source_ip, window_minutes),
+            )
+
+            row = cursor.fetchone()
+
+        return row[0]
+
+    finally:
+        connection.close()
