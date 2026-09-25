@@ -2,7 +2,6 @@ from fastapi.testclient import TestClient
 
 from app.detection import failed_attempts
 from app.main import app
-from app.storage import alerts, events
 
 
 client = TestClient(app)
@@ -10,8 +9,6 @@ client = TestClient(app)
 
 def setup_function():
     failed_attempts.clear()
-    alerts.clear()
-    events.clear()
 
 def test_health_check():
     response = client.get("/health")
@@ -100,8 +97,18 @@ def test_alerts_endpoint():
 
     data = response.json()
 
-    assert data["count"] == 1
-    assert len(data["alerts"]) == 1
+    assert data["count"] >= 1
+
+    matching_alerts = [
+        alert
+        for alert in data["alerts"]
+        if alert["source_ip"] == "203.0.113.63"
+    ]
+
+    assert len(matching_alerts) >= 1
+    assert matching_alerts[-1]["alert_type"] == "repeated_authentication_failures"
+    assert matching_alerts[-1]["severity"] == "high"
+    assert matching_alerts[-1]["attempt_count"] == 5
 
 
 def test_events_endpoint():
@@ -123,10 +130,17 @@ def test_events_endpoint():
 
     data = response.json()
 
-    assert data["count"] == 1
-    assert len(data["events"]) == 1
-    assert data["events"][0]["source"] == "web-server-01"
-    assert data["events"][0]["source_ip"] == "203.0.113.64"
+    assert data["count"] >= 1
+
+    matching_events = [
+        item
+        for item in data["events"]
+        if item["source_ip"] == "203.0.113.64"
+    ]
+
+    assert len(matching_events) >= 1
+    assert matching_events[-1]["source"] == "web-server-01"
+
 
 
 def test_get_alert_by_id():

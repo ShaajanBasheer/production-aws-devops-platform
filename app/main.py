@@ -4,12 +4,11 @@ from .detection import analyze_event
 from .models import SecurityEvent
 from .storage import (
     add_alert,
-    add_event,
+    add_event_to_database,
     get_alert,
     get_alerts,
     get_events,
 )
-
 
 app = FastAPI(
     title="Security Log Analytics & Alerting Platform",
@@ -28,7 +27,7 @@ def health_check():
 
 @app.post("/events")
 def ingest_event(event: SecurityEvent):
-    add_event(event)
+    add_event_to_database(event)
 
     alert = analyze_event(event)
 
