@@ -2,6 +2,7 @@ from .models import SecurityEvent
 from .storage import (
     count_recent_authentication_failures,
     count_recent_http_errors,
+    has_recent_alert,
 )
 
 
@@ -9,6 +10,7 @@ from .storage import (
 FAILURE_THRESHOLD = 5
 WINDOW_MINUTES = 5
 HTTP_ERROR_THRESHOLD = 5
+ALERT_COOLDOWN_MINUTES = 5
 
 
 def analyze_event(event: SecurityEvent) -> dict | None:
@@ -29,6 +31,13 @@ def analyze_event(event: SecurityEvent) -> dict | None:
         )
 
         if attempt_count >= FAILURE_THRESHOLD:
+            if has_recent_alert(
+                "repeated_authentication_failures",
+                event.source_ip,
+                ALERT_COOLDOWN_MINUTES,
+            ):
+                return None
+
             return {
                 "alert_type": "repeated_authentication_failures",
                 "severity": "high",
@@ -51,6 +60,13 @@ def analyze_event(event: SecurityEvent) -> dict | None:
         )
 
         if error_count >= HTTP_ERROR_THRESHOLD:
+            if has_recent_alert(
+                "http_error_spike",
+                event.source_ip,
+                ALERT_COOLDOWN_MINUTES,
+            ):
+                return None
+
             return {
                 "alert_type": "http_error_spike",
                 "severity": "medium",

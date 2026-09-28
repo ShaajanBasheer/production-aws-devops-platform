@@ -173,6 +173,40 @@ def get_alert(alert_id: int) -> dict | None:
     finally:
         connection.close()
 
+def has_recent_alert(
+    alert_type: str,
+    source_ip: str,
+    cooldown_minutes: int,
+) -> bool:
+    from .database import get_database_connection
+
+    connection = get_database_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM security_alerts
+                    WHERE alert_type = %s
+                      AND source_ip = %s
+                      AND created_at >= NOW() - (%s * INTERVAL '1 minute')
+                )
+                """,
+                (
+                    alert_type,
+                    source_ip,
+                    cooldown_minutes,
+                ),
+            )
+
+            row = cursor.fetchone()
+
+        return row[0]
+
+    finally:
+        connection.close()
 
 def add_event_to_database(event: SecurityEvent) -> SecurityEvent:
     from .database import get_database_connection
