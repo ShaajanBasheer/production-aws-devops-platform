@@ -1,5 +1,6 @@
 import logging
 
+from .metrics import DETECTION_RULE_TRIGGERS
 from .models import SecurityEvent
 from .storage import (
     count_recent_authentication_failures,
@@ -62,6 +63,11 @@ def analyze_event(event: SecurityEvent) -> dict | None:
                 )
                 return None
 
+            DETECTION_RULE_TRIGGERS.labels(
+                rule="repeated_authentication_failures",
+                severity="high",
+            ).inc()
+
             logger.warning(
                 "Detection rule triggered | "
                 "rule=repeated_authentication_failures | "
@@ -113,6 +119,11 @@ def analyze_event(event: SecurityEvent) -> dict | None:
                     ALERT_COOLDOWN_MINUTES,
                 )
                 return None
+
+            DETECTION_RULE_TRIGGERS.labels(
+                rule="http_error_spike",
+                severity="medium",
+            ).inc()
 
             logger.warning(
                 "Detection rule triggered | "

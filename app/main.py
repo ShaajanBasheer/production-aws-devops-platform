@@ -2,9 +2,19 @@ import logging
 import time
 
 from fastapi import FastAPI, Request
+from prometheus_client import generate_latest
+from starlette.responses import Response
 
 from .detection import analyze_event
 from .logging_config import configure_logging
+from .metrics import (
+    ALERTS_BY_SEVERITY,
+    ALERTS_GENERATED,
+    EVENTS_BY_TYPE,
+    EVENTS_RECEIVED,
+    HTTP_REQUESTS,
+    HTTP_REQUEST_DURATION,
+)
 from .models import SecurityEvent
 from .storage import (
     add_alert,
@@ -34,7 +44,19 @@ async def request_logging_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
 
-        duration_ms = (time.perf_counter() - start_time) * 1000
+        duration_seconds = time.perf_counter() - start_time
+        duration_ms = duration_seconds * 1000
+
+        HTTP_REQUESTS.labels(
+            method=request.method,
+            path=request.url.path,
+            status=str(response.status_code),
+        ).inc()
+
+        HTTP_REQUEST_DURATION.labels(
+            method=request.method,
+            path=request.url.path,
+        ).observe(duration_seconds)
 
         logger.info(
             "HTTP request completed | method=%s | path=%s | status=%s | duration_ms=%.2f",
@@ -47,7 +69,19 @@ async def request_logging_middleware(request: Request, call_next):
         return response
 
     except Exception:
-        duration_ms = (time.perf_counter() - start_time) * 1000
+        duration_seconds = time.perf_counter() - start_time
+        duration_ms = duration_seconds * 1000
+
+        HTTP_REQUESTS.labels(
+            method=request.method,
+            path=request.url.path,
+            status="500",
+        ).inc()
+
+        HTTP_REQUEST_DURATION.labels(
+            method=request.method,
+            path=request.url.path,
+        ).observe(duration_seconds)
 
         logger.exception(
             "HTTP request failed | method=%s | path=%s | duration_ms=%.2f",
@@ -69,6 +103,14 @@ def health_check():
     }
 
 
+@app.get("/metrics")
+def metrics():
+    return Response(
+        content=generate_latest(),
+        media_type="text/plain; version=0.0.4",
+    )
+
+
 @app.post("/events")
 def ingest_event(event: SecurityEvent):
     logger.info(
@@ -78,12 +120,24 @@ def ingest_event(event: SecurityEvent):
         event.source_ip,
     )
 
+    EVENTS_RECEIVED.inc()
+
+    EVENTS_BY_TYPE.labels(
+        event_type=event.event_type,
+    ).inc()
+
     add_event_to_database(event)
 
     alert = analyze_event(event)
 
     if alert:
         add_alert(alert)
+
+        ALERTS_GENERATED.inc()
+
+        ALERTS_BY_SEVERITY.labels(
+            severity=alert["severity"],
+        ).inc()
 
         logger.warning(
             "Security alert generated | alert_type=%s | severity=%s | source_ip=%s",

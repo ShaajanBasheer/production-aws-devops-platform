@@ -180,3 +180,44 @@ def test_get_nonexistent_alert():
 
     assert data["error"] == "Alert not found"
     assert data["alert_id"] == 999
+
+
+def test_metrics_endpoint():
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+
+    metrics = response.text
+
+    assert "security_events_received_total" in metrics
+    assert "security_alerts_generated_total" in metrics
+    assert "security_events_by_type_total" in metrics
+    assert "http_requests_total" in metrics
+    assert "http_request_duration_seconds" in metrics
+    assert "detection_rule_triggers_total" in metrics
+
+
+def test_event_updates_metrics():
+    source_ip = "198.51.100.192"
+
+    response = client.post(
+        "/events",
+        json={
+            "source": "metrics-test-server",
+            "event_type": "metrics_test",
+            "source_ip": source_ip,
+            "status_code": 200,
+            "message": "Metrics test event",
+        },
+    )
+
+    assert response.status_code == 200
+
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+
+    metrics = response.text
+
+    assert "security_events_received_total" in metrics
+    assert 'security_events_by_type_total{event_type="metrics_test"}' in metrics
